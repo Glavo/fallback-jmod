@@ -233,33 +233,41 @@ public class Main {
     }
 
     private static void reduce(Options options) throws IOException {
-        for (Map.Entry<Path, Path> entry : options.files.entrySet()) {
-            reduce(options.runtimePath, entry.getKey(), entry.getValue());
-        }
-    }
-
-    private static void reduce(Path runtimePath, Path sourcePath, Path targetPath) throws IOException {
-        printDebugMessage(() -> String.format("Reduce: [runtimePath=%s, sourcePath=%s, targetPath=%s]", runtimePath, sourcePath, targetPath));
-        Path tempFile = targetPath.resolveSibling(targetPath.getFileName().toString() + ".tmp");
-
-        Path jimagePath = runtimePath.resolve("lib").resolve("modules");
+        Path jimagePath = options.runtimePath.resolve("lib").resolve("modules");
         if (Files.notExists(jimagePath) || Files.isDirectory(jimagePath)) {
             printErrorMessageAndExit(Messages.getMessage("error.missing.jimage"));
         }
 
+        for (Map.Entry<Path, Path> entry : options.files.entrySet()) {
+            try (ImageReader image = ImageReader.open(jimagePath)) {
+
+                reduce(options.runtimePath, image, entry.getKey(), entry.getValue());
+            }
+
+        }
+    }
+
+    private static void reduce(Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws IOException {
+        printDebugMessage(() -> String.format("Reduce: [runtimePath=%s, sourcePath=%s, targetPath=%s]", runtimePath, sourcePath, targetPath));
+        Path tempFile = targetPath.resolveSibling(targetPath.getFileName().toString() + ".tmp");
+
         boolean completed = false;
 
-        try (FileSystem input = JmodUtils.open(sourcePath);
-             ImageReader image = ImageReader.open(jimagePath)) {
+        try (FileSystem input = JmodUtils.open(sourcePath)) {
+            Path fallbackList = input.getPath("/", JmodUtils.SECTION_CLASSES, "fallback.list");
+            if (Files.exists(fallbackList)) {
+                System.out.println(Messages.getMessage("info.already.fallback", sourcePath.getFileName()));
+                return;
+            }
 
             Path moduleInfo = input.getPath("/", JmodUtils.SECTION_CLASSES, "module-info.class");
             if (Files.notExists(moduleInfo)) {
-                throw new FileNotFoundException(Messages.getMessage("error.missing.module_info", sourcePath.toString()));
+                throw new FileNotFoundException(Messages.getMessage("error.missing.module_info", sourcePath.getFileName()));
             }
 
             String moduleName = ModuleNameFinder.findModuleName(moduleInfo);
             if (moduleName == null) {
-                throw new IOException("");
+                throw new IOException(Messages.getMessage("error.missing.module_name", sourcePath.getFileName()));
             }
             printDebugMessage(() -> "Module Name: " + moduleName);
 
