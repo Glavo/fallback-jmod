@@ -1,11 +1,12 @@
 package org.glavo.jmod.fallback;
 
-import org.glavo.jmod.fallback.util.JmodUtils;
-import org.glavo.jmod.fallback.util.Messages;
+import org.glavo.jmod.fallback.util.*;
 
 import java.io.*;
+import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.function.Supplier;
@@ -14,8 +15,6 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import jdk.internal.jimage.*;
-import org.glavo.jmod.fallback.util.ModuleNameFinder;
-import org.glavo.jmod.fallback.util.ReduceFileVisitor;
 
 public class Main {
     public static boolean debugOutput = Boolean.getBoolean("org.glavo.jmod.fallback.debug");
@@ -39,6 +38,11 @@ public class Main {
             case "jlink":
                 mode = Mode.JLINK;
                 break;
+            case "-?":
+            case "-help":
+            case "--help":
+                showHelpMessage(System.out);
+                return;
             default:
                 printErrorMessage(Messages.getMessage("error.missing.mode", args[0]));
                 System.exit(1);
@@ -67,6 +71,7 @@ public class Main {
                 reduce(options);
                 break;
             case RESTORE:
+                restore(options);
                 break;
             default:
                 throw new AssertionError(mode);
@@ -85,6 +90,7 @@ public class Main {
 
     static final class Options {
         Path runtimePath;
+        Path jimagePath;
         final Map<Path, Path> files = new LinkedHashMap<>(); // from file to target file
         // final List<String> includePatterns = new ArrayList<>();
         // final List<String> excludePatterns = new ArrayList<>();
@@ -100,6 +106,12 @@ public class Main {
         while (i < args.length) {
             String arg = args[i];
             switch (arg) {
+                case "-?":
+                case "-help":
+                case "--help":
+                    showHelpMessage(System.out);
+                    System.exit(0);
+                    break;
                 case "-d":
                     if (outputDir != null) {
                         printErrorMessageAndExit(Messages.getMessage("error.options.repeat", arg));
@@ -229,21 +241,25 @@ public class Main {
             runtimePath = Objects.requireNonNull(parent);
         }
 
+        Path jimagePath = runtimePath.resolve("lib").resolve("modules");
+        if (Files.notExists(jimagePath) || Files.isDirectory(jimagePath)) {
+            printErrorMessageAndExit(Messages.getMessage("error.missing.jimage"));
+        }
+
         res.runtimePath = runtimePath;
+        res.jimagePath = jimagePath;
 
         return res;
     }
 
     private static void reduce(Options options) throws IOException {
-        Path jimagePath = options.runtimePath.resolve("lib").resolve("modules");
-        if (Files.notExists(jimagePath) || Files.isDirectory(jimagePath)) {
-            printErrorMessageAndExit(Messages.getMessage("error.missing.jimage"));
-        }
-
-        for (Map.Entry<Path, Path> entry : options.files.entrySet()) {
-            try (ImageReader image = ImageReader.open(jimagePath)) {
-
-                reduce(options.runtimePath, image, entry.getKey(), entry.getValue());
+        try (ImageReader image = ImageReader.open(options.jimagePath)) {
+            for (Map.Entry<Path, Path> entry : options.files.entrySet()) {
+                try {
+                    reduce(options.runtimePath, image, entry.getKey(), entry.getValue());
+                } catch (Throwable ex) {
+                    ex.printStackTrace();
+                }
             }
 
         }
@@ -315,8 +331,8 @@ public class Main {
                                 String fileName = file.toString().substring(1);
 
                                 ZipEntry entry = new ZipEntry(fileName);
-                                entry.setLastModifiedTime(attrs.lastModifiedTime());
-                                entry.setLastAccessTime(attrs.lastAccessTime());
+                                // entry.setLastModifiedTime(attrs.lastModifiedTime());
+                                // entry.setLastAccessTime(attrs.lastAccessTime());
 
                                 zipOutput.putNextEntry(entry);
                                 if (Files.isSymbolicLink(file)) {
@@ -345,22 +361,178 @@ public class Main {
             }
         }
 
-
     }
 
-    private static void printDebugMessage(String message) {
+    private static void restore(Options options) throws IOException {
+        try (ImageReader image = ImageReader.open(options.jimagePath)) {
+            for (Map.Entry<Path, Path> entry : options.files.entrySet()) {
+                try {
+                    restore(options.runtimePath, image, entry.getKey(), entry.getValue());
+                } catch (Throwable ex) {
+                    ex.printStackTrace();
+                }
+            }
+
+        }
+    }
+
+    private static void restore(Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws IOException {
+        printDebugMessage(() -> String.format("Restore: [runtimePath=%s, sourcePath=%s, targetPath=%s]", runtimePath, sourcePath, targetPath));
+        Path tempFile = targetPath.resolveSibling(targetPath.getFileName().toString() + ".tmp");
+        Files.deleteIfExists(tempFile);
+
+        boolean completed = false;
+
+        try (FileSystem input = JmodUtils.open(sourcePath)) {
+
+            Path fallbackList = input.getPath("/", JmodUtils.SECTION_CLASSES, FALLBACK_LIST_FILE_NAME);
+            if (Files.notExists(fallbackList)) {
+                System.out.println(Messages.getMessage("info.not.fallback", sourcePath.getFileName()));
+                return;
+            }
+
+            Map<String, String> list = FallbackUtils.readFallbackList(fallbackList);
+
+            Path moduleInfo = input.getPath("/", JmodUtils.SECTION_CLASSES, "/module-info.class");
+            if (Files.notExists(moduleInfo)) {
+                throw new FileNotFoundException(Messages.getMessage("error.missing.module_info", sourcePath.getFileName()));
+            }
+
+            String moduleName = ModuleNameFinder.findModuleName(moduleInfo);
+            if (moduleName == null) {
+                throw new IOException(Messages.getMessage("error.missing.module_name", sourcePath.getFileName()));
+            }
+            printDebugMessage(() -> "Module Name: " + moduleName);
+
+            if (image.findNode("/modules/" + moduleName) == null) {
+                System.out.println(Messages.getMessage("info.module_not_in_runtime_path", moduleName));
+                return;
+            }
+
+            Path root = input.getPath("/");
+
+            try (BufferedOutputStream output = new BufferedOutputStream(Files.newOutputStream(tempFile))) {
+                JmodUtils.writeMagicNumber(output);
+                try (ZipOutputStream zipOutput = new ZipOutputStream(output)) {
+
+                    for (Map.Entry<String, String> entry : list.entrySet()) {
+                        String fileName = entry.getKey();
+                        String hash = entry.getValue();
+
+                        if (Files.exists(root.resolve(fileName))) {
+                            continue;
+                        }
+
+                        if (fileName.startsWith(JmodUtils.SECTION_CLASSES)) {
+                            ImageLocation location = image.findLocation(moduleName, fileName.substring(JmodUtils.SECTION_CLASSES.length() + 1));
+                            if (location == null) {
+                                throw new FileNotFoundException(fileName);
+                            }
+
+                            if (hash != null) {
+                                String actualHash;
+                                try (InputStream i = image.getResourceStream(location)) {
+                                    actualHash = MessageDigestUtils.hash(i);
+                                }
+
+                                if (!hash.equals(actualHash)) {
+                                    throw new IOException(Messages.getMessage("error.hash.mismatch", fileName));
+                                }
+                            }
+
+                            ZipEntry zipEntry = new ZipEntry(fileName);
+                            zipOutput.putNextEntry(zipEntry);
+                            try (InputStream i = image.getResourceStream(location)) {
+                                i.transferTo(zipOutput);
+                            }
+                            zipOutput.closeEntry();
+
+                        } else {
+                            Path runtimeFilePath;
+                            if (fileName.startsWith(JmodUtils.SECTION_LIB) && fileName.toLowerCase(Locale.ROOT).endsWith(".dll")) {
+                                runtimeFilePath = runtimePath.resolve(JmodUtils.SECTION_BIN + fileName.substring(JmodUtils.SECTION_LIB.length())).toAbsolutePath().normalize();
+                            } else {
+                                runtimeFilePath = runtimePath.resolve(fileName).toAbsolutePath().normalize();
+                            }
+
+                            if (!Files.isRegularFile(runtimeFilePath)) {
+                                throw new FileNotFoundException(runtimeFilePath.toString());
+                            }
+
+                            if (hash != null) {
+                                String actualHash = MessageDigestUtils.hash(runtimeFilePath);
+                                if (!hash.equals(actualHash)) {
+                                    throw new IOException(Messages.getMessage("error.hash.mismatch", fileName));
+                                }
+                            }
+
+                            BasicFileAttributes attributes = Files.getFileAttributeView(runtimeFilePath, BasicFileAttributeView.class).readAttributes();
+
+                            ZipEntry zipEntry = new ZipEntry(fileName);
+                            //zipEntry.setLastAccessTime(attributes.lastAccessTime());
+                            //zipEntry.setLastModifiedTime(attributes.lastModifiedTime());
+
+                            zipOutput.putNextEntry(zipEntry);
+                            Files.copy(runtimeFilePath, zipOutput);
+                            zipOutput.closeEntry();
+                        }
+
+                    }
+
+                    SimpleFileVisitor<Path> v = new SimpleFileVisitor<>() {
+                        @Override
+                        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                            if (!file.toString().equals("/" + JmodUtils.SECTION_CLASSES + "/" + FALLBACK_LIST_FILE_NAME)) {
+                                String fileName = file.toString().substring(1);
+
+                                ZipEntry entry = new ZipEntry(fileName);
+                                entry.setLastModifiedTime(attrs.lastModifiedTime());
+                                entry.setLastAccessTime(attrs.lastAccessTime());
+
+                                zipOutput.putNextEntry(entry);
+                                if (Files.isSymbolicLink(file)) {
+                                    throw new IOException("Cannot process symbolic links");
+                                } else {
+                                    Files.copy(file, zipOutput);
+                                }
+                                zipOutput.closeEntry();
+                            }
+                            return FileVisitResult.CONTINUE;
+                        }
+                    };
+
+                    Files.walkFileTree(root, v);
+
+
+                }
+
+                completed = true;
+            }
+
+        } finally {
+            try {
+                if (completed) {
+                    Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(tempFile);
+            }
+        }
+    }
+
+    public static void printDebugMessage(String message) {
         if (debugOutput) {
             System.out.println("[DEBUG] " + message);
         }
     }
 
-    private static void printDebugMessage(Supplier<String> message) {
+    public static void printDebugMessage(Supplier<String> message) {
         if (debugOutput) {
             printDebugMessage(message.get());
         }
     }
 
-    private static void printErrorMessage(String message) {
+    public static void printErrorMessage(String message) {
         System.err.println(Messages.getMessage("error", message));
         if (debugOutput) {
             for (StackTraceElement stackTraceElement : Thread.currentThread().getStackTrace()) {
@@ -369,7 +541,7 @@ public class Main {
         }
     }
 
-    private static void printErrorMessageAndExit(String message) {
+    public static void printErrorMessageAndExit(String message) {
         printErrorMessage(message);
         System.exit(1);
     }

@@ -62,7 +62,7 @@ public class MessageDigestUtils {
         do {
             read = input.read(buffer);
             if (read > 0) {
-                md.update(buffer);
+                md.update(buffer, 0, read);
             }
         } while (read >= 0);
 
@@ -80,5 +80,19 @@ public class MessageDigestUtils {
         try (InputStream input = Files.newInputStream(file)) {
             return hash(input);
         }
+    }
+
+    public static boolean checkSHA256Hash(String hash) {
+        if (hash.length() != 64) {
+            return false;
+        }
+        for (int i = 0; i < hash.length(); i++) {
+            char ch = hash.charAt(i);
+            if ((ch < '0' || ch > '9') && (ch < 'a' || ch > 'f')) {
+                return false;
+            }
+        }
+
+        return true;
     }
 }
