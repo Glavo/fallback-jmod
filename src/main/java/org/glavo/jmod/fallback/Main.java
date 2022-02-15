@@ -2,15 +2,19 @@ package org.glavo.jmod.fallback;
 
 import org.glavo.jmod.fallback.util.JmodUtils;
 import org.glavo.jmod.fallback.util.Messages;
-import org.glavo.jmod.fallback.util.ZipUtils;
 
 import java.io.BufferedOutputStream;
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.PrintStream;
 import java.nio.file.*;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.spi.ToolProvider;
+import java.util.zip.ZipOutputStream;
+
+import jdk.internal.jimage.*;
+import org.glavo.jmod.fallback.util.ModuleNameFinder;
 
 public class Main {
     public static boolean debugOutput = Boolean.getBoolean("org.glavo.jmod.fallback.debug");
@@ -211,9 +215,9 @@ public class Main {
 
             for (Path path : res.files.keySet()) {
                 if (parent == null) {
-                    parent = path.getParent();
+                    parent = path.getParent().getParent();
                 } else {
-                    Path thisParent = path.getParent();
+                    Path thisParent = path.getParent().getParent();
                     if (!Objects.equals(parent, thisParent)) {
                         printErrorMessageAndExit(Messages.getMessage("error.missing.inputs"));
                     }
@@ -236,20 +240,64 @@ public class Main {
 
     private static void reduce(Path runtimePath, Path sourcePath, Path targetPath) throws IOException {
         printDebugMessage(() -> String.format("Reduce: [runtimePath=%s, sourcePath=%s, targetPath=%s]", runtimePath, sourcePath, targetPath));
+        Path tempFile = targetPath.resolveSibling(targetPath.getFileName().toString() + ".tmp");
 
-        Path tempFile = Files.createTempFile("fallback-", ".jmod");
-        Files.deleteIfExists(tempFile);
+        Path jimagePath = runtimePath.resolve("lib").resolve("modules");
+        if (Files.notExists(jimagePath) || Files.isDirectory(jimagePath)) {
+            printErrorMessageAndExit(Messages.getMessage("error.missing.jimage"));
+        }
+
+        boolean completed = false;
 
         try (FileSystem input = JmodUtils.open(sourcePath);
-             FileSystem output = ZipUtils.openForWrite(tempFile)) {
+             ImageReader image = ImageReader.open(jimagePath)) {
+
+            Path moduleInfo = input.getPath("/", JmodUtils.SECTION_CLASSES, "module-info.class");
+            if (Files.notExists(moduleInfo)) {
+                throw new FileNotFoundException(Messages.getMessage("error.missing.module_info", sourcePath.toString()));
+            }
+
+            String moduleName = ModuleNameFinder.findModuleName(moduleInfo);
+            if (moduleName == null) {
+                throw new IOException("");
+            }
+            printDebugMessage(() -> "Module Name: " + moduleName);
 
 
+            Path root = input.getPath("/");
+
+            try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(root)) {
+                for (Path dir : directoryStream) {
+                    if (Files.isDirectory(dir)) {
+                        String name = dir.getFileName().toString();
+                        switch (name) {
+                            case JmodUtils.SECTION_LIB:
+                            case JmodUtils.SECTION_BIN:
+                                // TODO
+                        }
+                    }
+                }
+            }
+
+            try (BufferedOutputStream output = new BufferedOutputStream(Files.newOutputStream(tempFile))) {
+                JmodUtils.writeMagicNumber(output);
+                try (ZipOutputStream zipOutput = new ZipOutputStream(output)) {
+                    // TODO
+                }
+
+                completed = true;
+            }
+        } finally {
+            try {
+                if (completed) {
+                    Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                }
+            } finally {
+                Files.deleteIfExists(tempFile);
+            }
         }
 
-        try (BufferedOutputStream output = new BufferedOutputStream(Files.newOutputStream(targetPath))) {
-            JmodUtils.writeMagicNumber(output);
-            Files.copy(tempFile, output);
-        }
+
     }
 
     private static void printDebugMessage(String message) {

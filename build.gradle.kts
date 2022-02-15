@@ -20,6 +20,7 @@ val needExports = listOf(
     "java.base/jdk.internal.module",
     "java.base/jdk.internal.jmod",
     "java.base/jdk.internal.jimage",
+    "java.base/jdk.internal.org.objectweb.asm",
 )
 
 tasks.compileJava {
