@@ -45,36 +45,40 @@ public class MessageDigestUtils {
         }
     });
 
-    public MessageDigest getMessageDigest() {
+    public static MessageDigest getMessageDigest() {
         MessageDigest md = cache.get().messageDigest;
         md.reset();
         return md;
     }
 
-    public String hashFile(Path file) throws IOException {
+    public static String hash(InputStream input) throws IOException {
         Cache cache = MessageDigestUtils.cache.get();
         byte[] buffer = cache.cacheArray;
         MessageDigest md = cache.messageDigest;
         md.reset();
 
 
-        try (InputStream input = Files.newInputStream(file)) {
-            int read;
-            do {
-                read = input.read(buffer);
-                if (read > 0) {
-                    md.update(buffer);
-                }
-            } while (read >= 0);
-        }
+        int read;
+        do {
+            read = input.read(buffer);
+            if (read > 0) {
+                md.update(buffer);
+            }
+        } while (read >= 0);
 
         byte[] digest = md.digest();
-        assert digest != null : file;
+        assert digest != null;
 
         StringBuilder builder = new StringBuilder(digest.length * 2);
         for (byte b : digest) {
             builder.append(byte2str[b & 0xFF]);
         }
         return builder.toString();
+    }
+
+    public static String hash(Path file) throws IOException {
+        try (InputStream input = Files.newInputStream(file)) {
+            return hash(input);
+        }
     }
 }

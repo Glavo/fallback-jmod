@@ -3,21 +3,23 @@ package org.glavo.jmod.fallback;
 import org.glavo.jmod.fallback.util.JmodUtils;
 import org.glavo.jmod.fallback.util.Messages;
 
-import java.io.BufferedOutputStream;
-import java.io.FileNotFoundException;
-import java.io.IOException;
-import java.io.PrintStream;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.function.Supplier;
 import java.util.spi.ToolProvider;
+import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 import jdk.internal.jimage.*;
 import org.glavo.jmod.fallback.util.ModuleNameFinder;
+import org.glavo.jmod.fallback.util.ReduceFileVisitor;
 
 public class Main {
     public static boolean debugOutput = Boolean.getBoolean("org.glavo.jmod.fallback.debug");
+    public static final String FALLBACK_LIST_FILE_NAME = "fallback.list";
 
     public static void main(String[] args) throws Exception {
 
@@ -254,7 +256,7 @@ public class Main {
         boolean completed = false;
 
         try (FileSystem input = JmodUtils.open(sourcePath)) {
-            Path fallbackList = input.getPath("/", JmodUtils.SECTION_CLASSES, "fallback.list");
+            Path fallbackList = input.getPath("/", JmodUtils.SECTION_CLASSES, FALLBACK_LIST_FILE_NAME);
             if (Files.exists(fallbackList)) {
                 System.out.println(Messages.getMessage("info.already.fallback", sourcePath.getFileName()));
                 return;
@@ -271,26 +273,64 @@ public class Main {
             }
             printDebugMessage(() -> "Module Name: " + moduleName);
 
+            if (image.findNode("/modules/" + moduleName) == null) {
+                System.out.println(Messages.getMessage("info.module_not_in_runtime_path", moduleName));
+                return;
+            }
 
             Path root = input.getPath("/");
 
-            try (DirectoryStream<Path> directoryStream = Files.newDirectoryStream(root)) {
-                for (Path dir : directoryStream) {
-                    if (Files.isDirectory(dir)) {
-                        String name = dir.getFileName().toString();
-                        switch (name) {
-                            case JmodUtils.SECTION_LIB:
-                            case JmodUtils.SECTION_BIN:
-                                // TODO
-                        }
-                    }
-                }
+            ReduceFileVisitor visitor = new ReduceFileVisitor(moduleName, runtimePath, image);
+            Files.walkFileTree(root, visitor);
+
+            SortedMap<Path, String> hash = visitor.getRecordedHash();
+            if (hash.isEmpty()) {
+                System.out.println(Messages.getMessage("info.module_not_in_runtime_path", moduleName));
+                return;
             }
 
             try (BufferedOutputStream output = new BufferedOutputStream(Files.newOutputStream(tempFile))) {
                 JmodUtils.writeMagicNumber(output);
                 try (ZipOutputStream zipOutput = new ZipOutputStream(output)) {
-                    // TODO
+                    SimpleFileVisitor<Path> v = new SimpleFileVisitor<>() {
+                        @Override
+                        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
+                            String dirName = dir.toString();
+                            if (dirName.equals("/" + JmodUtils.SECTION_CLASSES)) {
+                                zipOutput.putNextEntry(new ZipEntry(JmodUtils.SECTION_CLASSES + "/" + FALLBACK_LIST_FILE_NAME));
+                                for (Map.Entry<Path, String> entry : hash.entrySet()) {
+                                    zipOutput.write(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                                    zipOutput.write(' ');
+                                    zipOutput.write(entry.getKey().toString().substring(1).getBytes(StandardCharsets.UTF_8));
+                                    zipOutput.write('\n');
+                                }
+                                zipOutput.closeEntry();
+                            }
+                            return FileVisitResult.CONTINUE;
+                        }
+
+                        @Override
+                        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+                            if (!hash.containsKey(file)) {
+                                String fileName = file.toString().substring(1);
+
+                                ZipEntry entry = new ZipEntry(fileName);
+                                entry.setLastModifiedTime(attrs.lastModifiedTime());
+                                entry.setLastAccessTime(attrs.lastAccessTime());
+
+                                zipOutput.putNextEntry(entry);
+                                if (Files.isSymbolicLink(file)) {
+                                    throw new IOException("Cannot process symbolic links");
+                                } else {
+                                    Files.copy(file, zipOutput);
+                                }
+                                zipOutput.closeEntry();
+                            }
+                            return FileVisitResult.CONTINUE;
+                        }
+                    };
+
+                    Files.walkFileTree(root, v);
                 }
 
                 completed = true;

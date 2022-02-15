@@ -1,9 +1,12 @@
 package org.glavo.jmod.fallback.util;
 
+import java.nio.file.Path;
 import java.util.Comparator;
 
 public enum PathArrayComparator implements Comparator<String[]> {
     INSTANCE;
+
+    public static final Comparator<Path> PATH_COMPARATOR = Comparator.comparing(path -> path.toString().split("[/\\\\]"), INSTANCE);
 
     @Override
     public int compare(String[] x, String[] y) {
