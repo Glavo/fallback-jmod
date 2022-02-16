@@ -37,6 +37,18 @@ public class JmodUtils {
         output.write(MINOR_VERSION);
     }
 
+    public static String mapToRuntimePath(String filePath) {
+        // See jdk.tools.jlink.builder.DefaultImageBuilder#nativeDir
+        if (filePath.startsWith(JmodUtils.SECTION_LIB) && (filePath.endsWith(".dll")
+                || filePath.endsWith(".diz")
+                || filePath.endsWith(".pdb")
+                || filePath.endsWith(".map"))) {
+            return JmodUtils.SECTION_BIN + filePath.substring(JmodUtils.SECTION_LIB.length());
+        } else {
+            return filePath;
+        }
+    }
+
     public static final String SECTION_CLASSES = "classes";
     public static final String SECTION_CONF = "conf";
     public static final String SECTION_INCLUDE = "include";

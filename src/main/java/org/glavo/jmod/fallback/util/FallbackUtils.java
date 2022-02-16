@@ -1,15 +1,22 @@
 package org.glavo.jmod.fallback.util;
 
+import java.io.BufferedReader;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 public class FallbackUtils {
-    public static Map<String, String> readFallbackList(Path path) throws IOException {
+    public static Map<String, String> readFallbackList(InputStream input) throws IOException {
         LinkedHashMap<String, String> res = new LinkedHashMap<>();
-        for (String line : Files.readAllLines(path)) {
+        BufferedReader reader = new BufferedReader(new InputStreamReader(input, StandardCharsets.UTF_8));
+
+        for (String line : reader.lines().collect(Collectors.toList())) {
             if (line.isBlank()) {
                 continue;
             }
@@ -47,9 +54,15 @@ public class FallbackUtils {
 
             String oldValue = res.putIfAbsent(fileName, hash);
             if (oldValue != null && hash != null && !oldValue.equals(hash)) {
-                throw new IOException(Messages.getMessage("error.conflict.record", path.getFileName(), hash, oldValue));
+                throw new IOException(Messages.getMessage("error.conflict.record", fileName, hash, oldValue));
             }
         }
         return res;
+    }
+
+    public static Map<String, String> readFallbackList(Path path) throws IOException {
+        try (InputStream input = Files.newInputStream(path)) {
+            return readFallbackList(input);
+        }
     }
 }

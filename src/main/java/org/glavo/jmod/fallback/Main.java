@@ -90,16 +90,6 @@ public class Main {
         out.println(Messages.getMessage("help.message"));
     }
 
-    static final class Options {
-        Path runtimePath;
-        Path jimagePath;
-        final Map<Path, Path> files = new LinkedHashMap<>(); // from file to target file
-
-        Path targetDir; // For jlink
-        // final List<String> includePatterns = new ArrayList<>();
-        // final List<String> excludePatterns = new ArrayList<>();
-    }
-
     static Options handleOptions(Mode mode, String[] args) throws IOException {
         Options res = new Options();
         Path outputDir = null;
@@ -198,13 +188,13 @@ public class Main {
                         printErrorMessageAndExit(Messages.getMessage("error.target.already.exists", outputDir));
                     }
                 }
-
-                //Files.deleteIfExists(outputDir);
-            } else {
-                Files.createDirectories(outputDir);
             }
 
             res.targetDir = outputDir;
+        }
+
+        if (outputDir != null) {
+            Files.createDirectories(outputDir);
         }
 
         try {
@@ -327,6 +317,8 @@ public class Main {
             }
             printDebugMessage(() -> "Module Name: " + moduleName);
 
+            byte[] filteredModuleInfo = ModuleHashesFilter.filter(moduleInfo);
+
             if (image.findNode("/modules/" + moduleName) == null) {
                 System.out.println(Messages.getMessage("info.module_not_in_runtime_path", moduleName));
                 status = Status.SKIP;
@@ -375,11 +367,16 @@ public class Main {
                                 // entry.setLastAccessTime(attrs.lastAccessTime());
 
                                 zipOutput.putNextEntry(entry);
-                                if (Files.isSymbolicLink(file)) {
-                                    throw new IOException("Cannot process symbolic links");
+                                if (fileName.equals(JmodUtils.SECTION_CLASSES + "/module-info.class")) {
+                                    zipOutput.write(filteredModuleInfo);
                                 } else {
-                                    Files.copy(file, zipOutput);
+                                    if (Files.isSymbolicLink(file)) {
+                                        throw new IOException("Cannot process symbolic links");
+                                    } else {
+                                        Files.copy(file, zipOutput);
+                                    }
                                 }
+
                                 zipOutput.closeEntry();
                             }
                             return FileVisitResult.CONTINUE;
@@ -396,7 +393,7 @@ public class Main {
                 if (status == Status.COMPLETED) {
                     Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 } else if (status == Status.SKIP) {
-                    if (!Files.isSameFile(sourcePath, targetPath)) {
+                    if (!Files.exists(targetPath) || !Files.isSameFile(sourcePath, targetPath)) {
                         Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
                     }
                 }
@@ -496,17 +493,7 @@ public class Main {
                             zipOutput.closeEntry();
 
                         } else {
-                            Path runtimeFilePath;
-
-                            // See jdk.tools.jlink.builder.DefaultImageBuilder#nativeDir
-                            if (fileName.startsWith(JmodUtils.SECTION_LIB) && (fileName.endsWith(".dll")
-                                    || fileName.endsWith(".diz")
-                                    || fileName.endsWith(".pdb")
-                                    || fileName.endsWith(".map"))) {
-                                runtimeFilePath = runtimePath.resolve(JmodUtils.SECTION_BIN + fileName.substring(JmodUtils.SECTION_LIB.length())).toAbsolutePath().normalize();
-                            } else {
-                                runtimeFilePath = runtimePath.resolve(fileName).toAbsolutePath().normalize();
-                            }
+                            Path runtimeFilePath = runtimePath.resolve(JmodUtils.mapToRuntimePath(fileName));
 
                             if (!Files.isRegularFile(runtimeFilePath)) {
                                 throw new FileNotFoundException(runtimeFilePath.toString());
@@ -565,7 +552,7 @@ public class Main {
                 if (status == Status.COMPLETED) {
                     Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
                 } else if (status == Status.SKIP) {
-                    if (!Files.isSameFile(sourcePath, targetPath)) {
+                    if (!Files.exists(targetPath) || !Files.isSameFile(sourcePath, targetPath)) {
                         Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
                     }
                 }
@@ -615,13 +602,15 @@ public class Main {
                 options.targetDir, moduleNames, ByteOrder.nativeOrder(), finder
         );
 
-        FallbackJmodPlugin plugin = new FallbackJmodPlugin();
-        Jlink.PluginsConfiguration pluginsConfiguration = new Jlink.PluginsConfiguration(
-                List.of(plugin), new DefaultImageBuilder(options.targetDir, Map.of()), null
-        );
+        try (ImageReader image = ImageReader.open(options.jimagePath)) {
+            FallbackJmodPlugin plugin = new FallbackJmodPlugin(options, image);
+            Jlink.PluginsConfiguration pluginsConfiguration = new Jlink.PluginsConfiguration(
+                    List.of(plugin), new DefaultImageBuilder(options.targetDir, Map.of()), null
+            );
 
-        Jlink jlink = new Jlink();
-        jlink.build(configuration, pluginsConfiguration);
+            Jlink jlink = new Jlink();
+            jlink.build(configuration, pluginsConfiguration);
+        }
     }
 
     public static void printDebugMessage(String message) {

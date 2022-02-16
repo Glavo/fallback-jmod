@@ -22,10 +22,15 @@ val needExports = listOf(
     "java.base/jdk.internal.jimage",
     "java.base/jdk.internal.loader",
     "java.base/jdk.internal.org.objectweb.asm",
+    "java.base/jdk.internal.org.objectweb.asm.commons",
     "jdk.jlink/jdk.tools.jlink.builder",
     "jdk.jlink/jdk.tools.jlink.plugin",
     "jdk.jlink/jdk.tools.jlink.internal",
     "jdk.jlink/jdk.tools.jlink.internal.plugins",
+)
+
+val needOpens = listOf(
+    "java.base/jdk.internal.module"
 )
 
 tasks.compileJava {
