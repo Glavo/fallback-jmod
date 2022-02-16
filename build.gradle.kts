@@ -22,6 +22,7 @@ val needExports = listOf(
     "java.base/jdk.internal.jimage",
     "java.base/jdk.internal.loader",
     "java.base/jdk.internal.org.objectweb.asm",
+    "jdk.jlink/jdk.tools.jlink.builder",
     "jdk.jlink/jdk.tools.jlink.plugin",
     "jdk.jlink/jdk.tools.jlink.internal",
     "jdk.jlink/jdk.tools.jlink.internal.plugins",

@@ -1,17 +1,22 @@
 package org.glavo.jmod.fallback;
 
-import jdk.internal.loader.BuiltinClassLoader;
+import jdk.internal.module.ModulePath;
 import jdk.tools.jlink.internal.Jlink;
+import jdk.tools.jlink.builder.*;
+import org.glavo.jmod.fallback.jlink.FallbackJmodPlugin;
 import org.glavo.jmod.fallback.util.*;
 
 import java.io.*;
+import java.lang.module.ModuleFinder;
+import java.lang.module.ModuleReference;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributeView;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.*;
 import java.util.function.Supplier;
-import java.util.spi.ToolProvider;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
@@ -52,22 +57,12 @@ public class Main {
 
         printDebugMessage(() -> "Mode: " + mode.toString().toLowerCase(Locale.ROOT));
 
-        if (mode == Mode.JLINK) {
-            Optional<ToolProvider> jlink = ToolProvider.findFirst("jlink");
-            jlink.ifPresentOrElse(tool -> {
-                String[] jlinkArgs = Arrays.copyOfRange(args, 1, args.length);
-                printDebugMessage(() -> "Run jlink with args: " + Arrays.toString(jlinkArgs));
-                tool.run(System.out, System.err, jlinkArgs);
-            }, () -> {
-                printErrorMessage(Messages.getMessage("error.missing.jlink"));
-                System.exit(1);
-            });
-            return;
-        }
-
         Options options = handleOptions(mode, Arrays.copyOfRange(args, 1, args.length));
 
         switch (mode) {
+            case JLINK:
+                jlink(options);
+                break;
             case REDUCE:
                 reduce(options);
                 break;
@@ -92,18 +87,20 @@ public class Main {
     }
 
     public static void showHelpMessage(PrintStream out) {
-        out.println("TODO: showHelpMessage"); // TODO
+        out.println(Messages.getMessage("help.message"));
     }
 
     static final class Options {
         Path runtimePath;
         Path jimagePath;
         final Map<Path, Path> files = new LinkedHashMap<>(); // from file to target file
+
+        Path targetDir; // For jlink
         // final List<String> includePatterns = new ArrayList<>();
         // final List<String> excludePatterns = new ArrayList<>();
     }
 
-    static Options handleOptions(Mode mode, String[] args) {
+    static Options handleOptions(Mode mode, String[] args) throws IOException {
         Options res = new Options();
         Path outputDir = null;
         Path runtimePath = null;
@@ -121,10 +118,10 @@ public class Main {
                     break;
                 case "-d":
                     if (outputDir != null) {
-                        printErrorMessageAndExit(Messages.getMessage("error.options.repeat", arg));
+                        printErrorMessageAndExit(Messages.getMessage("error.repeat.options", arg));
                     }
                     if (i == args.length - 1) {
-                        printErrorMessageAndExit(Messages.getMessage("error.missing.arg"));
+                        printErrorMessageAndExit(Messages.getMessage("error.missing.arg", arg));
                     }
                     String outputDirName = args[++i];
                     try {
@@ -141,10 +138,10 @@ public class Main {
                 case "-p":
                 case "--runtime-path":
                     if (runtimePath != null) {
-                        printErrorMessageAndExit(Messages.getMessage("error.options.repeat", arg));
+                        printErrorMessageAndExit(Messages.getMessage("error.repeat.options", arg));
                     }
                     if (i == args.length - 1) {
-                        printErrorMessageAndExit(Messages.getMessage("error.missing.arg"));
+                        printErrorMessageAndExit(Messages.getMessage("error.missing.arg", arg));
                     }
                     String runtimePathName = args[++i];
                     try {
@@ -187,6 +184,29 @@ public class Main {
             printErrorMessageAndExit(Messages.getMessage("error.missing.inputs"));
         }
 
+        if (mode == Mode.JLINK) {
+            if (outputDir == null) {
+                printErrorMessageAndExit(Messages.getMessage("error.missing.outputs"));
+            }
+            //noinspection ConstantConditions
+            if (Files.exists(outputDir)) {
+                if (!Files.isDirectory(outputDir)) {
+                    printErrorMessageAndExit(Messages.getMessage("error.target.already.exists", outputDir));
+                }
+                try (Stream<Path> stream = Files.list(outputDir)) {
+                    if (stream.findAny().isPresent()) {
+                        printErrorMessageAndExit(Messages.getMessage("error.target.already.exists", outputDir));
+                    }
+                }
+
+                //Files.deleteIfExists(outputDir);
+            } else {
+                Files.createDirectories(outputDir);
+            }
+
+            res.targetDir = outputDir;
+        }
+
         try {
             while (i < args.length) {
                 String file = args[i++];
@@ -203,7 +223,10 @@ public class Main {
                         try (DirectoryStream<Path> jmods = Files.newDirectoryStream(searchPath, "*.jmod")) {
                             for (Path jmod : jmods) {
                                 if (!Files.isDirectory(jmod)) {
-                                    Path targetFile = outputDir == null ? jmod : outputDir.resolve(jmod.getFileName());
+                                    Path targetFile = null;
+                                    if (mode != Mode.JLINK) {
+                                        targetFile = outputDir == null ? jmod : outputDir.resolve(jmod.getFileName());
+                                    }
                                     res.files.put(jmod, targetFile);
                                 }
                             }
@@ -219,7 +242,10 @@ public class Main {
                         printErrorMessageAndExit(Messages.getMessage("error.missing.file", file));
                     }
 
-                    Path targetFile = outputDir == null ? path : outputDir.resolve(path.getFileName());
+                    Path targetFile = null;
+                    if (mode != Mode.JLINK){
+                        targetFile = outputDir == null ? path : outputDir.resolve(path.getFileName());
+                    }
                     res.files.put(path, targetFile);
                 }
             }
@@ -458,7 +484,7 @@ public class Main {
                                 }
 
                                 if (!hash.equals(actualHash)) {
-                                    throw new IOException(Messages.getMessage("error.hash.mismatch", fileName));
+                                    throw new IOException(Messages.getMessage("error.mismatch.hash", fileName));
                                 }
                             }
 
@@ -489,7 +515,7 @@ public class Main {
                             if (hash != null) {
                                 String actualHash = MessageDigestUtils.hash(runtimeFilePath);
                                 if (!hash.equals(actualHash)) {
-                                    throw new IOException(Messages.getMessage("error.hash.mismatch", fileName));
+                                    throw new IOException(Messages.getMessage("error.mismatch.hash", fileName));
                                 }
                             }
 
@@ -547,6 +573,55 @@ public class Main {
                 Files.deleteIfExists(tempFile);
             }
         }
+    }
+
+    private static void jlink(Options options) throws IOException {
+
+        Path[] jmods = options.files.keySet().toArray(Path[]::new);
+
+        Set<String> moduleNames = new LinkedHashSet<>();
+
+        for (Path jmod : jmods) {
+            try (FileSystem fs = JmodUtils.open(jmod)) {
+                Path path = fs.getPath("/classes/module-info.class");
+                if (!Files.isRegularFile(path)) {
+                    throw new IOException(Messages.getMessage("error.missing.module_info", jmod.getFileName()));
+                }
+                String moduleName = ModuleNameFinder.findModuleName(path);
+                if (moduleName == null) {
+                    throw new IOException(Messages.getMessage("error.missing.module_name", jmod.getFileName()));
+                }
+
+                if (!moduleNames.add(moduleName)) {
+                    throw new IOException(Messages.getMessage("error.repeat.module", moduleName));
+                }
+            }
+        }
+
+        ModuleFinder finder = ModulePath.of(Runtime.version(), true, jmods);
+        ModuleReference baseModule = finder.find("java.base")
+                .orElseThrow(() -> new IllegalArgumentException(Messages.getMessage("error.missing.base")));
+
+        Runtime.Version baseVersion =
+                Runtime.Version.parse(baseModule.descriptor().version()
+                        .orElseThrow(() -> new IllegalArgumentException("No version in java.base descriptor")).toString());
+
+        if (Runtime.version().feature() != baseVersion.feature() ||
+                Runtime.version().interim() != baseVersion.interim()) {
+            printErrorMessageAndExit(Messages.getMessage("error.mismatch.java.version", baseVersion, Runtime.version()));
+        }
+
+        Jlink.JlinkConfiguration configuration = new Jlink.JlinkConfiguration(
+                options.targetDir, moduleNames, ByteOrder.nativeOrder(), finder
+        );
+
+        FallbackJmodPlugin plugin = new FallbackJmodPlugin();
+        Jlink.PluginsConfiguration pluginsConfiguration = new Jlink.PluginsConfiguration(
+                List.of(plugin), new DefaultImageBuilder(options.targetDir, Map.of()), null
+        );
+
+        Jlink jlink = new Jlink();
+        jlink.build(configuration, pluginsConfiguration);
     }
 
     public static void printDebugMessage(String message) {

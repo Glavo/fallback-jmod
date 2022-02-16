@@ -43,7 +43,6 @@ public class FallbackJmodPlugin extends AbstractPlugin {
     @Override
     public ResourcePool transform(ResourcePool in, ResourcePoolBuilder out) {
         in.transformAndCopy(resource -> {
-            System.out.println(resource.path());
             return resource;
         }, out);
         return out.build();
