@@ -1,9 +1,10 @@
 package org.glavo.jmod.fallback;
 
+import jdk.internal.loader.BuiltinClassLoader;
+import jdk.tools.jlink.internal.Jlink;
 import org.glavo.jmod.fallback.util.*;
 
 import java.io.*;
-import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributeView;
@@ -20,7 +21,7 @@ public class Main {
     public static boolean debugOutput = Boolean.getBoolean("org.glavo.jmod.fallback.debug");
     public static final String FALLBACK_LIST_FILE_NAME = "fallback.list";
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) throws Throwable {
 
         if (args.length == 0) {
             showHelpMessage(System.err);
@@ -82,6 +83,12 @@ public class Main {
         REDUCE,
         RESTORE,
         JLINK
+    }
+
+    enum Status {
+        INCOMPLETE,
+        COMPLETED,
+        SKIP
     }
 
     public static void showHelpMessage(PrintStream out) {
@@ -265,11 +272,12 @@ public class Main {
         }
     }
 
-    private static void reduce(Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws IOException {
+    private static void reduce(Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws
+            IOException {
         printDebugMessage(() -> String.format("Reduce: [runtimePath=%s, sourcePath=%s, targetPath=%s]", runtimePath, sourcePath, targetPath));
         Path tempFile = targetPath.resolveSibling(targetPath.getFileName().toString() + ".tmp");
 
-        boolean completed = false;
+        Status status = Status.INCOMPLETE;
 
         try (FileSystem input = JmodUtils.open(sourcePath)) {
             Path fallbackList = input.getPath("/", JmodUtils.SECTION_CLASSES, FALLBACK_LIST_FILE_NAME);
@@ -280,17 +288,22 @@ public class Main {
 
             Path moduleInfo = input.getPath("/", JmodUtils.SECTION_CLASSES, "module-info.class");
             if (Files.notExists(moduleInfo)) {
-                throw new FileNotFoundException(Messages.getMessage("error.missing.module_info", sourcePath.getFileName()));
+                printErrorMessage(Messages.getMessage("error.missing.module_info", sourcePath.getFileName()));
+                status = Status.SKIP;
+                return;
             }
 
             String moduleName = ModuleNameFinder.findModuleName(moduleInfo);
             if (moduleName == null) {
-                throw new IOException(Messages.getMessage("error.missing.module_name", sourcePath.getFileName()));
+                status = Status.SKIP;
+                printErrorMessage(Messages.getMessage("error.missing.module_name", sourcePath.getFileName()));
+                return;
             }
             printDebugMessage(() -> "Module Name: " + moduleName);
 
             if (image.findNode("/modules/" + moduleName) == null) {
                 System.out.println(Messages.getMessage("info.module_not_in_runtime_path", moduleName));
+                status = Status.SKIP;
                 return;
             }
 
@@ -302,6 +315,7 @@ public class Main {
             SortedMap<Path, String> hash = visitor.getRecordedHash();
             if (hash.isEmpty()) {
                 System.out.println(Messages.getMessage("info.module_not_in_runtime_path", moduleName));
+                status = Status.SKIP;
                 return;
             }
 
@@ -349,12 +363,16 @@ public class Main {
                     Files.walkFileTree(root, v);
                 }
 
-                completed = true;
+                status = Status.COMPLETED;
             }
         } finally {
             try {
-                if (completed) {
+                if (status == Status.COMPLETED) {
                     Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                } else if (status == Status.SKIP) {
+                    if (!Files.isSameFile(sourcePath, targetPath)) {
+                        Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                    }
                 }
             } finally {
                 Files.deleteIfExists(tempFile);
@@ -376,18 +394,20 @@ public class Main {
         }
     }
 
-    private static void restore(Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws IOException {
+    private static void restore(Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws
+            IOException {
         printDebugMessage(() -> String.format("Restore: [runtimePath=%s, sourcePath=%s, targetPath=%s]", runtimePath, sourcePath, targetPath));
         Path tempFile = targetPath.resolveSibling(targetPath.getFileName().toString() + ".tmp");
         Files.deleteIfExists(tempFile);
 
-        boolean completed = false;
+        Status status = Status.INCOMPLETE;
 
         try (FileSystem input = JmodUtils.open(sourcePath)) {
 
             Path fallbackList = input.getPath("/", JmodUtils.SECTION_CLASSES, FALLBACK_LIST_FILE_NAME);
             if (Files.notExists(fallbackList)) {
                 System.out.println(Messages.getMessage("info.not.fallback", sourcePath.getFileName()));
+                status = Status.SKIP;
                 return;
             }
 
@@ -395,12 +415,14 @@ public class Main {
 
             Path moduleInfo = input.getPath("/", JmodUtils.SECTION_CLASSES, "/module-info.class");
             if (Files.notExists(moduleInfo)) {
-                throw new FileNotFoundException(Messages.getMessage("error.missing.module_info", sourcePath.getFileName()));
+                printErrorMessage(Messages.getMessage("error.missing.module_info", sourcePath.getFileName()));
+                return;
             }
 
             String moduleName = ModuleNameFinder.findModuleName(moduleInfo);
             if (moduleName == null) {
-                throw new IOException(Messages.getMessage("error.missing.module_name", sourcePath.getFileName()));
+                printErrorMessage(Messages.getMessage("error.missing.module_name", sourcePath.getFileName()));
+                return;
             }
             printDebugMessage(() -> "Module Name: " + moduleName);
 
@@ -449,7 +471,12 @@ public class Main {
 
                         } else {
                             Path runtimeFilePath;
-                            if (fileName.startsWith(JmodUtils.SECTION_LIB) && fileName.toLowerCase(Locale.ROOT).endsWith(".dll")) {
+
+                            // See jdk.tools.jlink.builder.DefaultImageBuilder#nativeDir
+                            if (fileName.startsWith(JmodUtils.SECTION_LIB) && (fileName.endsWith(".dll")
+                                    || fileName.endsWith(".diz")
+                                    || fileName.endsWith(".pdb")
+                                    || fileName.endsWith(".map"))) {
                                 runtimeFilePath = runtimePath.resolve(JmodUtils.SECTION_BIN + fileName.substring(JmodUtils.SECTION_LIB.length())).toAbsolutePath().normalize();
                             } else {
                                 runtimeFilePath = runtimePath.resolve(fileName).toAbsolutePath().normalize();
@@ -502,17 +529,19 @@ public class Main {
                     };
 
                     Files.walkFileTree(root, v);
-
-
                 }
 
-                completed = true;
+                status = Status.COMPLETED;
             }
 
         } finally {
             try {
-                if (completed) {
+                if (status == Status.COMPLETED) {
                     Files.move(tempFile, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                } else if (status == Status.SKIP) {
+                    if (!Files.isSameFile(sourcePath, targetPath)) {
+                        Files.copy(sourcePath, targetPath, StandardCopyOption.REPLACE_EXISTING);
+                    }
                 }
             } finally {
                 Files.deleteIfExists(tempFile);

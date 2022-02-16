@@ -20,7 +20,11 @@ val needExports = listOf(
     "java.base/jdk.internal.module",
     "java.base/jdk.internal.jmod",
     "java.base/jdk.internal.jimage",
+    "java.base/jdk.internal.loader",
     "java.base/jdk.internal.org.objectweb.asm",
+    "jdk.jlink/jdk.tools.jlink.plugin",
+    "jdk.jlink/jdk.tools.jlink.internal",
+    "jdk.jlink/jdk.tools.jlink.internal.plugins",
 )
 
 tasks.compileJava {
@@ -33,7 +37,8 @@ tasks.jar {
     manifest {
         attributes(
             "Main-Class" to "org.glavo.jmod.fallback.Main",
-            "Add-Exports" to needExports.joinToString(" ")
+            "Add-Exports" to needExports.joinToString(" "),
+            "Add-Opens" to needExports.joinToString(" "),
         )
     }
 }

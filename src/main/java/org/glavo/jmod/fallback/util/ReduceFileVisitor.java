@@ -68,7 +68,12 @@ public class ReduceFileVisitor implements FileVisitor<Path> {
                 }
             } else {
                 Path runtimeFilePath;
-                if (filePath.startsWith(JmodUtils.SECTION_LIB) && filePath.toLowerCase(Locale.ROOT).endsWith(".dll")) {
+
+                // See jdk.tools.jlink.builder.DefaultImageBuilder#nativeDir
+                if (filePath.startsWith(JmodUtils.SECTION_LIB) && (filePath.endsWith(".dll")
+                        || filePath.endsWith(".diz")
+                        || filePath.endsWith(".pdb")
+                        || filePath.endsWith(".map"))) {
                     runtimeFilePath = runtimePath.resolve(JmodUtils.SECTION_BIN + filePath.substring(JmodUtils.SECTION_LIB.length()));
                 } else {
                     runtimeFilePath = runtimePath.resolve(filePath);
