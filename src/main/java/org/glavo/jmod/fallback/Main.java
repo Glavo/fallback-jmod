@@ -72,6 +72,8 @@ public class Main {
             default:
                 throw new AssertionError(mode);
         }
+
+        System.out.println(Messages.getMessage("message.done"));
     }
 
     enum Mode {
@@ -87,7 +89,7 @@ public class Main {
     }
 
     public static void showHelpMessage(PrintStream out) {
-        out.println(Messages.getMessage("help.message"));
+        out.println(Messages.getMessage("message.help"));
     }
 
     static Options handleOptions(Mode mode, String[] args) throws IOException {
@@ -106,6 +108,7 @@ public class Main {
                     showHelpMessage(System.out);
                     System.exit(0);
                     break;
+                case "--output":
                 case "-d":
                     if (outputDir != null) {
                         printErrorMessageAndExit(Messages.getMessage("error.repeat.options", arg));
