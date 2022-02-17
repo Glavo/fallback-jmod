@@ -133,7 +133,7 @@ Currently, I let the JDK recognize it through the Jlink plugin.
 Honestly, it's not a good choice. The reason is, it should be part of the Jmod format, not something specific to Jlink.
 
 I chose this because I wanted this little tool that works independently to have better integration with the JDK.
-But I messed up. I overestimated the difficulty of injecting custom plugins into the Jlink process.,
+But I messed up. I underestimated the difficulty of injecting custom plugins into the Jlink process.
 In the end, I still had to implement the parameter parsing part myself and use the `jdk.tools.jlink.internal.Jlink` directly to use my custom plugins.
 And to my surprise it broke `ModuleHashes`, so in the first prototype I had to do it a dirty way to get it to work.
 
