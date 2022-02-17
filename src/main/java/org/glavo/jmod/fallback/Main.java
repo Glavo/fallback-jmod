@@ -96,6 +96,8 @@ public class Main {
         Options res = new Options();
         Path outputDir = null;
         Path runtimePath = null;
+        String withoutVerify = null;
+        String exclude = null;
 
         int i = 0;
         loop:
@@ -147,15 +149,14 @@ public class Main {
                         printErrorMessageAndExit(Messages.getMessage("error.file.not.directory", runtimePathName));
                     }
                     break;
-                    /*
-                case "--include":
-                    if (include != null) {
+                case "--include-without-verify":
+                    if (withoutVerify != null) {
                         printErrorMessageAndExit(Messages.getMessage("error.options.repeat", arg));
                     }
                     if (i == args.length - 1) {
                         printErrorMessageAndExit(Messages.getMessage("error.missing.arg"));
                     }
-                    include = args[++i];
+                    withoutVerify = args[++i];
                     break;
                 case "--exclude":
                     if (exclude != null) {
@@ -166,7 +167,6 @@ public class Main {
                     }
                     exclude = args[++i];
                     break;
-                     */
                 default:
                     break loop;
             }
@@ -275,6 +275,14 @@ public class Main {
         res.runtimePath = runtimePath;
         res.jimagePath = jimagePath;
 
+        if (exclude != null) {
+            res.excludePatterns.addAll(Arrays.asList(exclude.split(":")));
+        }
+
+        if (withoutVerify != null) {
+            res.withoutVerifyPatterns.addAll(Arrays.asList(withoutVerify.split(":")));
+        }
+
         return res;
     }
 
@@ -282,7 +290,7 @@ public class Main {
         try (ImageReader image = ImageReader.open(options.jimagePath)) {
             for (Map.Entry<Path, Path> entry : options.files.entrySet()) {
                 try {
-                    reduce(options.runtimePath, image, entry.getKey(), entry.getValue());
+                    reduce(options, options.runtimePath, image, entry.getKey(), entry.getValue());
                 } catch (Throwable ex) {
                     ex.printStackTrace();
                 }
@@ -291,7 +299,7 @@ public class Main {
         }
     }
 
-    private static void reduce(Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws
+    private static void reduce(Options options, Path runtimePath, ImageReader image, Path sourcePath, Path targetPath) throws
             IOException {
         printDebugMessage(() -> String.format("Reduce: [runtimePath=%s, sourcePath=%s, targetPath=%s]", runtimePath, sourcePath, targetPath));
         Path tempFile = targetPath.resolveSibling(targetPath.getFileName().toString() + ".tmp");
@@ -331,6 +339,15 @@ public class Main {
             Path root = input.getPath("/");
 
             ReduceFileVisitor visitor = new ReduceFileVisitor(moduleName, runtimePath, image);
+
+            for (String excludePattern : options.excludePatterns) {
+                visitor.excludePatterns.add(input.getPathMatcher("glob:" + excludePattern));
+            }
+
+            for (String withoutVerifyPattern : options.withoutVerifyPatterns) {
+                visitor.withoutVerifyPatterns.add(input.getPathMatcher("glob:" + withoutVerifyPattern));
+            }
+
             Files.walkFileTree(root, visitor);
 
             SortedMap<Path, String> hash = visitor.getRecordedHash();
@@ -350,7 +367,12 @@ public class Main {
                             if (dirName.equals("/" + JmodUtils.SECTION_CLASSES)) {
                                 zipOutput.putNextEntry(new ZipEntry(JmodUtils.SECTION_CLASSES + "/" + FALLBACK_LIST_FILE_NAME));
                                 for (Map.Entry<Path, String> entry : hash.entrySet()) {
-                                    zipOutput.write(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                                    if (entry.getValue().isEmpty()) {
+                                        zipOutput.write('-');
+                                    } else {
+                                        zipOutput.write(entry.getValue().getBytes(StandardCharsets.UTF_8));
+                                    }
+
                                     zipOutput.write(' ');
                                     zipOutput.write(entry.getKey().toString().substring(1).getBytes(StandardCharsets.UTF_8));
                                     zipOutput.write('\n');

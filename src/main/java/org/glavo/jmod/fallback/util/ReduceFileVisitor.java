@@ -6,20 +6,17 @@ import org.glavo.jmod.fallback.Main;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.FileVisitResult;
-import java.nio.file.FileVisitor;
-import java.nio.file.Files;
-import java.nio.file.Path;
+import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
-import java.util.Locale;
-import java.util.SortedMap;
-import java.util.TreeMap;
+import java.util.*;
 
 public class ReduceFileVisitor implements FileVisitor<Path> {
 
     private final String moduleName;
     private final Path runtimePath;
     private final ImageReader image;
+    public final List<PathMatcher> excludePatterns = new ArrayList<>();
+    public final List<PathMatcher> withoutVerifyPatterns = new ArrayList<>();
 
     private final SortedMap<Path, String> recordedHash = new TreeMap<>(PathArrayComparator.PATH_COMPARATOR);
 
@@ -46,22 +43,46 @@ public class ReduceFileVisitor implements FileVisitor<Path> {
 
     @Override
     public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-        if (Files.isRegularFile(file) && !"module-info.class".equals(file.getFileName().toString())) {
+        if ("module-info.class".equals(file.getFileName().toString())) {
+            return FileVisitResult.CONTINUE;
+        }
+
+        for (PathMatcher excludePattern : excludePatterns) {
+            if (excludePattern.matches(file)) {
+                Main.printDebugMessage("Exclude: " + file);
+                return FileVisitResult.CONTINUE;
+            }
+        }
+
+        if (Files.isRegularFile(file)) {
             String filePath = file.toString().substring(1);
+
+            boolean verify = true;
+
+            for (PathMatcher pattern : withoutVerifyPatterns) {
+                if (pattern.matches(file)) {
+                    Main.printDebugMessage("No Verify: " + filePath);
+                    verify = false;
+                }
+            }
 
             if (filePath.startsWith(JmodUtils.SECTION_CLASSES)) {
                 ImageLocation location = image.findLocation(moduleName, filePath.substring(JmodUtils.SECTION_CLASSES.length() + 1));
-                if (location != null && location.getUncompressedSize() == Files.size(file)) {
-                    String expectedHash = MessageDigestUtils.hash(file);
-                    String actualHash;
-                    try (InputStream input = image.getResourceStream(location)) {
-                        actualHash = MessageDigestUtils.hash(input);
-                    }
+                if (location != null && (!verify || location.getUncompressedSize() == Files.size(file))) {
+                    if (verify) {
+                        String expectedHash = MessageDigestUtils.hash(file);
+                        String actualHash;
+                        try (InputStream input = image.getResourceStream(location)) {
+                            actualHash = MessageDigestUtils.hash(input);
+                        }
 
-                    if (expectedHash.equals(actualHash)) {
-                        recordedHash.put(file, expectedHash);
+                        if (expectedHash.equals(actualHash)) {
+                            recordedHash.put(file, expectedHash);
+                        } else {
+                            Main.printDebugMessage("Mismatch: " + filePath);
+                        }
                     } else {
-                        Main.printDebugMessage("Mismatch: " + filePath);
+                        recordedHash.put(file, "");
                     }
                 } else {
                     Main.printDebugMessage(() -> (location != null ? "Mismatch: " : "Not found: ") + filePath);
@@ -69,14 +90,18 @@ public class ReduceFileVisitor implements FileVisitor<Path> {
             } else {
                 Path runtimeFilePath = runtimePath.resolve(JmodUtils.mapToRuntimePath(filePath));
 
-                if (Files.isRegularFile(runtimeFilePath) && Files.size(runtimeFilePath) == Files.size(file)) {
-                    String expectedHash = MessageDigestUtils.hash(file);
-                    String actualHash = MessageDigestUtils.hash(runtimeFilePath);
+                if (Files.isRegularFile(runtimeFilePath) && (!verify || Files.size(runtimeFilePath) == Files.size(file))) {
+                    if (verify) {
+                        String expectedHash = MessageDigestUtils.hash(file);
+                        String actualHash = MessageDigestUtils.hash(runtimeFilePath);
 
-                    if (expectedHash.equals(actualHash)) {
-                        recordedHash.put(file, expectedHash);
+                        if (expectedHash.equals(actualHash)) {
+                            recordedHash.put(file, expectedHash);
+                        } else {
+                            Main.printDebugMessage("Mismatch: " + filePath);
+                        }
                     } else {
-                        Main.printDebugMessage("Mismatch: " + filePath);
+                        recordedHash.put(file, "");
                     }
                 } else {
                     Main.printDebugMessage(() -> (Files.isRegularFile(runtimeFilePath) ? "Mismatch: " : "Not found: ") + filePath);
