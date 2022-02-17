@@ -157,3 +157,7 @@ This is the list of current possible plans:
 * Record platform related information to generate multi-platform Jmod files.
 * ...
 
+### Integrated into OpenJDK?
+
+This is what I developed this project for. If the JCP is willing to embrace such an evolution, 
+I'd be happy to spend time implementing the results of the exploration on OpenJDK.
