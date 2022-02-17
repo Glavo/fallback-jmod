@@ -138,3 +138,22 @@ And to my surprise it broke `ModuleHashes`, so in the first prototype I had to d
 After I implemented the first prototype, I got a better understanding of Jlink's workflow.
 I now understand that by implementing a custom `ModuleFinder` I can perfectly achieve what I need.
 This feature will be available in the next prototype of Fallback Jmod.
+
+After replacing the implementation, I was able to solve some of the existing problems:
+`fallback.list` can be placed directly under the Jmod root path (not in the `classes`);
+No longer necessary to delete the `ModuleHashes`.
+
+### Go one step further?
+
+`fallback.list` is just an implementation specific detail of the first prototype.
+Its format is very simple, only a list of hash values corresponding to paths is recorded.
+
+In the future, I may introduce a richer Jmod manifest file to explore more possibilities of Jmod.
+
+This is the list of current possible plans:
+
+* Record the hashes of files that have not been removed, which is used for verification during Jlink.
+* Record some extra information, make the Jmod file can be used at runtime.
+* Record platform related information to generate multi-platform Jmod files.
+* ...
+
