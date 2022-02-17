@@ -1,12 +1,12 @@
 # Fallback Jmod
 
-This is an implementation prototype to explore the possibility of reducing Jmod to drastically reduce the size of the JDK.
+This is an implementation prototype to explore the possibility of reducing Jmod to drastically reduce the size of the OpenJDK.
 
 With [SapMachine OpenJDK](https://sap.github.io/SapMachine/) as the test case, 
 it can achieve the goal without losing any function:
 
-* For `sapmachine-jdk-17.0.2.tar.gz` compressed packages: 184MB -> **115M**
-* For the extracted directory: 316MB -> **242M**
+* For `sapmachine-jdk-17.0.2.tar.gz` compressed packages: **184MB -> 115M**
+* For the extracted directory: **316MB -> 242M**
 
 The reason for getting such a size reduction is that we reduced the Jmod file from 77MB to `2.4M`.
 
@@ -66,6 +66,23 @@ In this list, you can use `*` as a wildcard at the end of the path to specify al
 
 It's worth noting that the jlink mode, like any other mode, handles the list of Jmod files you specify.
 This is different from the jlink command line tool using `--module-path` and `--add-modules`.
+
+## JDK release
+
+The purpose of this exploration is to hopefully improve the way the JDK is released.
+
+The current JDK release method wastes a lot of storage space and network traffic.
+For CI and other containers, this can be more wasteful than expected.
+
+Moreover, the Jlink tool can generate the runtime image of other platform based on the the corresponding Jmod files, 
+but the current distribution method causes us to download the complete JDK in order to download Jmod, which is a greater waste.
+
+The ultimate goal of this exploration is to hope that the distribution method of OpenJDK will be improved:
+Only Fallback Jmod files are carried in each JDK for out-of-the-box Jlink usage;
+In addition to this, the Jmod files for each platform JDK are packaged and distributed separately, allowing users to download them individually.
+
+Based on existing work on Fallback Jmod and SapMachine, I created a Release showing how I expected the distribution to be,
+You can see my JDK distribution for Windows x86-64 and Linux x86-64 platforms [here](https://github.com/Glavo/fallback-jmod/releases/tag/jdk-1.0).
 
 ## Known Issues
 
