@@ -121,3 +121,20 @@ The zip file created by this tool (use `ZipOutputStream` internally) may not be 
 but other software can recognize it normally.
 If you encounter problems, please let me know by open a issue. 
 I try to use other compression libraries instead of JDK.
+
+## Future works
+
+### Better support for Fallback Jmod within the JDK
+
+Currently, I let the JDK recognize it through the Jlink plugin.
+
+Honestly, it's not a good choice. The reason is, it should be part of the Jmod format, not something specific to Jlink.
+
+I chose this because I wanted this little tool that works independently to have better integration with the JDK.
+But I messed up. I overestimated the difficulty of injecting custom plugins into the Jlink process.,
+In the end, I still had to implement the parameter parsing part myself and use the `jdk.tools.jlink.internal.Jlink` directly to use my custom plugins.
+And to my surprise it broke `ModuleHashes`, so in the first prototype I had to do it a dirty way to get it to work.
+
+After I implemented the first prototype, I got a better understanding of Jlink's workflow.
+I now understand that by implementing a custom `ModuleFinder` I can perfectly achieve what I need.
+This feature will be available in the next prototype of Fallback Jmod.
