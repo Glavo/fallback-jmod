@@ -37,7 +37,9 @@ Finally, the tool will remove `fallback.list`, making it back to normal Jmod fil
 **Jlink mode**: A Jlink plugin is implemented here, which enables the Jlink tool to generate the runtime with some fallback jmod file completely transparently, 
 without having to restore first.
 
-Since Jlink only loads built-in plugins by default, I provide a new mode for command line tools that injects the plugin into the Jlink process and calls Jlink.
+Since Jlink only loads builtin plugins by default, I provide a new mode for command line tools that injects the plugin into the Jlink process and calls Jlink.
+
+In addition, I am developing an implementation scheme based on custom `ModuleFinder`, which may be better than Jlink plugin.
 
 ## Usage
 
