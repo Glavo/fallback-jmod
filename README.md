@@ -108,9 +108,10 @@ Since this is just an implementation prototype, I don't want to make it too comp
 so I only implement the basic features for demonstration purposes.
 
 
-Another problem is that due to the way `ModuleFinder` works, this tool will destroy the verification of the module hash value during the Jlink process.
+Another problem is that due to the way `ModulePath` works, this tool will destroy the verification of the module hash value during the Jlink process.
 It may be necessary to modify the JDK to make Fallback Jmod work before the hash check to fix the problem.
 Before that, I had the tool remove the hash recorded in the module in reduction process so that the prototype would work.
+(It seems that I can solve this problem by implementing `ModuleFinder` myself. Maybe it's better than implementing the Jlink plugin)
 
 
 In addition, there seems to be some problems with the zip implementation of JDK.
