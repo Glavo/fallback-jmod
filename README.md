@@ -41,7 +41,7 @@ Since Jlink only loads built-in plugins by default, I provide a new mode for com
 
 ## Usage
 
-You can download it from GitHub Release (TODO) and execute it with `java -jar fallback-jmod.jar <options> <jmod files>`.
+You can download it from [GitHub Release](https://github.com/Glavo/fallback-jmod/releases) and execute it with `java -jar fallback-jmod.jar <options> <jmod files>`.
 It has no external dependencies and runs on JDK 11 and above.
 
 It accepts the following command line arguments:
