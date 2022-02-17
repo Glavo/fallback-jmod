@@ -1,6 +1,8 @@
 # Fallback Jmod
 
-This is an implementation prototype to explore the possibility of reducing Jmod to drastically reduce the size of the OpenJDK.
+This is a prototype to explore the possibilities of Jmod file format evolution.
+
+The work that has been achieved so far is to greatly reduce the size of the JDK by reducing Jmod.
 
 With [SapMachine OpenJDK](https://sap.github.io/SapMachine/) as the test case, 
 it can achieve the goal without losing any function:
