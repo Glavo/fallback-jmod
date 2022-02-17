@@ -52,6 +52,13 @@ It accepts the following command line arguments:
 * `--runtime-path`/`-p`: Specify the runtime path described above.
   If all Jmod files you specify are in the same folder, the default value of this option is the parent folder of that folder;  
   Otherwise, you must specify the runtime path explicitly.
+* `--exclude`: (`reduce` mode only)  Specify files that should not be reduced.
+  It accepts a glob list divided by `:`, and the path separator uses `/`. (It is implemented internally through the `ZipFileSystem::getPathMatcher`)
+  When the path matches the glob, the file guaranteed **not to be reduced**.
+* `--include-without-verify`: (`reduce` mode only) Specifies that the file will not be hash verified during reduction.
+  It accepts a glob list divided by `:`, and the path separator uses `/`. (It is implemented internally through the `ZipFileSystem::getPathMatcher`)
+  When the path matches the glob, as long as the file exists in the runtime path, we will reduce the file without requiring the content to match exactly.
+  We will not record its hash value and skip the verification of its hash value in restore mode.
 
 After the option is a list of Jmod files, declaring the Jmod files you want to process.
 In this list, you can use `*` as a wildcard at the end of the path to specify all Jmod files within that folder.
@@ -73,6 +80,8 @@ Vendors that are known to do this are BellSoft and Azul, and those that don't ar
 Therefore, if you want to try this tool, it is recommended to use the [SapMachine](https://sap.github.io/SapMachine/) to achieve a more significant effect.
 I'll continue to investigate this to find out exactly why they do this.
 
+Of course, you can add the command line parameter `--include-without-verify /bin/**:/lib/**` to skip the verification of these different files to achieve a similar effect.
+
 
 The second problem is that the Jlink mode of this tool is very limited. This is not a technical problem, but an implementation problem.
 In theory, as a Jlink plugin, it can work completely transparently, and users usually don't need to perceive it.
@@ -85,3 +94,10 @@ so I only implement the basic features for demonstration purposes.
 Another problem is that due to the way `ModuleFinder` works, this tool will destroy the verification of the module hash value during the Jlink process.
 It may be necessary to modify the JDK to make Fallback Jmod work before the hash check to fix the problem.
 Before that, I had the tool remove the hash recorded in the module in reduction process so that the prototype would work.
+
+
+In addition, there seems to be some problems with the zip implementation of JDK.
+The zip file created by this tool (use `ZipOutputStream` internally) may not be read by JDK,
+but other software can recognize it normally.
+If you encounter problems, please let me know by open a issue. 
+I try to use other compression libraries instead of JDK.
