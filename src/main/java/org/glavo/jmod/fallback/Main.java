@@ -328,7 +328,7 @@ public class Main {
             }
             printDebugMessage(() -> "Module Name: " + moduleName);
 
-            byte[] filteredModuleInfo = ModuleHashesFilter.filter(moduleInfo);
+            byte[] filteredModuleInfo = ModuleHashesUtils.filter(moduleInfo);
 
             if (image.findNode("/modules/" + moduleName) == null) {
                 System.out.println(Messages.getMessage("info.module_not_in_runtime_path", moduleName));

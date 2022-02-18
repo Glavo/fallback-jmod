@@ -7,6 +7,7 @@ import java.io.InputStreamReader;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -63,6 +64,14 @@ public class FallbackUtils {
     public static Map<String, String> readFallbackList(Path path) throws IOException {
         try (InputStream input = Files.newInputStream(path)) {
             return readFallbackList(input);
+        }
+    }
+
+    public static Map<String, String> readFallbackListOrEmpty(Path path) throws IOException {
+        if (Files.exists(path)) {
+            return readFallbackList(path);
+        } else {
+            return Collections.emptyMap();
         }
     }
 }
