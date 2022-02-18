@@ -45,7 +45,7 @@ In addition, I am developing an implementation scheme based on custom `ModuleFin
 
 ## Usage
 
-You can download it from [GitHub Release](https://github.com/Glavo/fallback-jmod/releases) and execute it with `java -jar fallback-jmod.jar <options> <jmod files>`.
+You can download it from [GitHub Release](https://github.com/Glavo/fallback-jmod/releases) and execute it with `java -jar fallback-jmod.jar (reduce|restore|jlink) <options> <jmod files>`.
 It has no external dependencies and runs on JDK 11 and above.
 
 It accepts the following command line arguments:
