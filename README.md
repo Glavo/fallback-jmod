@@ -143,6 +143,7 @@ In the future, I may introduce a richer Jmod manifest file to explore more possi
 
 This is the list of current possible plans:
 
+* Use a different extension to differentiate it from the full Jmod to avoid confusion.
 * Record the hashes of files that have not been removed, which is used for verification during Jlink.
 * Record some extra information, make the Jmod file can be used at runtime.
 * Record platform related information to generate multi-platform Jmod files.
