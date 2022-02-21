@@ -14,7 +14,7 @@ The reason for getting such a size reduction is that we reduced the Jmod file fr
 
 To know why I'm able to do such amazing things, you first need to know a fact:
 
-* **Jmod files are never used at execution time, it's only used on Jlink.**
+* **Jmod files are never used at execution time, it's only used on Jlink.** (What you may not know is that the class files used by Java at run time are located in the JImage file `${java.home}/lib/modules`)
 * Most of the files in Jmod files are actually already included in the JDK.
 
 Based on this, I can avoid redundant storage of the same file by recording a list of files and its hash values in Jmod file.
