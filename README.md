@@ -129,11 +129,10 @@ I try to use other compression libraries instead of JDK.
 Currently, I let the JDK recognize it through the Jlink plugin.
 
 Honestly, it's not a good choice. The reason is, it should be part of the Jmod format, not something specific to Jlink.
-
 I chose this because I wanted this little tool that works independently to have better integration with the JDK.
-At present, I have implemented a ModuleFinder that can recognize fallback jmod, but to further integrate it with Jlink, I need to modify the source code of Jlink itself.
-So for now I'm not going to provide it, in the future I'll try to fork the OpenJDK to implement it.
 
+At present, I have implemented a `FallbackJmodModuleFinder` that can recognize fallback jmod, but to further integrate it with Jlink, I need to modify the source code of Jlink itself.
+So for now I'm not going to provide it, in the future I'll try to fork the OpenJDK to implement it.
 
 ### Go one step further?
 
