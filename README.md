@@ -10,7 +10,7 @@ it can achieve the goal without losing any function:
 * For `sapmachine-jdk-17.0.2.tar.gz` compressed packages: **184MB -> 115M**
 * For the extracted directory: **316MB -> 242M**
 
-The reason for getting such a size reduction is that we reduced the Jmod file from 77MB to `2.4M`.
+The reason for getting such a size reduction is that we reduced the Jmod file from 77MB to 2.4MB.
 
 To know why I'm able to do such amazing things, you first need to know a fact:
 Most of the files in Jmod files are actually already included in the JDK.
