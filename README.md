@@ -41,8 +41,6 @@ without having to restore first.
 
 Since Jlink only loads builtin plugins by default, I provide a new mode for command line tools that injects the plugin into the Jlink process and calls Jlink.
 
-In addition, I am developing an implementation scheme based on custom `ModuleFinder`, which may be better than Jlink plugin.
-
 ## Usage
 
 You can download it from [GitHub Release](https://github.com/Glavo/fallback-jmod/releases) and execute it with `java -jar fallback-jmod.jar (reduce|restore|jlink) <options> <jmod files>`.
@@ -133,17 +131,9 @@ Currently, I let the JDK recognize it through the Jlink plugin.
 Honestly, it's not a good choice. The reason is, it should be part of the Jmod format, not something specific to Jlink.
 
 I chose this because I wanted this little tool that works independently to have better integration with the JDK.
-But I messed up. I underestimated the difficulty of injecting custom plugins into the Jlink process.
-In the end, I still had to implement the parameter parsing part myself and use the `jdk.tools.jlink.internal.Jlink` directly to use my custom plugins.
-And to my surprise it broke `ModuleHashes`, so in the first prototype I had to do it a dirty way to get it to work.
+At present, I have implemented a ModuleFinder that can recognize fallback jmod, but to further integrate it with Jlink, I need to modify the source code of Jlink itself.
+So for now I'm not going to provide it, in the future I'll try to fork the OpenJDK to implement it.
 
-After I implemented the first prototype, I got a better understanding of Jlink's workflow.
-I now understand that by implementing a custom `ModuleFinder` I can perfectly achieve what I need.
-This feature will be available in the next prototype of Fallback Jmod.
-
-After replacing the implementation, I was able to solve some of the existing problems:
-`fallback.list` can be placed directly under the Jmod root path (not in the `classes`);
-No longer necessary to delete the `ModuleHashes`.
 
 ### Go one step further?
 
