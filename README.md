@@ -12,11 +12,11 @@ it can achieve the goal without losing any function:
 
 The reason for getting such a size reduction is that we reduced the Jmod file from 77MB to 2.4MB.
 
-To know why I'm able to do such amazing things, you first need to know a fact:
+To know why I'm able to do such amazing things, you need to know some facts first:
 
-* **Jmod files are never used at execution time, it's only used on Jlink.** 
-  (What you may not know is that the class files used by Java at run time are located in the JImage file `${java.home}/lib/modules`)
+* **Jmod files are never used at execution time, it's only used on Jlink.**
 * Most of the files in Jmod files are actually already included in the JDK.
+  (Most of the files are located directly in the JDK folder, and `classes` are located in the JImage file `${java.home}/lib/modules`)
 
 Based on this, I can avoid redundant storage of the same file by recording a list of files and its hash values in Jmod file.
 
